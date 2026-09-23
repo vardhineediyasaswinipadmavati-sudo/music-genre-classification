@@ -1,249 +1,490 @@
 import streamlit as st
-import pandas as pd
-from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
+import numpy as np
+import librosa
+import joblib
+import tempfile
+import os
 
 
-# -----------------------------
-# Page Configuration
-# -----------------------------
+# =========================================================
+# PAGE CONFIGURATION
+# =========================================================
+
 st.set_page_config(
-    page_title="Music Genre Classification",
+    page_title="Music Genre AI",
     page_icon="🎵",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-st.title("Music Genre Classification")
-st.write("Predict the genre of a music track using audio features.")
+
+# =========================================================
+# CUSTOM CSS
+# =========================================================
+
+st.markdown("""
+<style>
+
+    /* Main page */
+    .stApp {
+        background: linear-gradient(
+            135deg,
+            #0f172a 0%,
+            #111827 50%,
+            #1e1b4b 100%
+        );
+        color: white;
+    }
+
+    /* Remove default top spacing */
+    .block-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+        max-width: 1100px;
+    }
+
+    /* Main title */
+    .main-title {
+        text-align: center;
+        font-size: 48px;
+        font-weight: 800;
+        margin-bottom: 8px;
+        background: linear-gradient(
+            90deg,
+            #a78bfa,
+            #60a5fa,
+            #22d3ee
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    /* Subtitle */
+    .subtitle {
+        text-align: center;
+        font-size: 18px;
+        color: #cbd5e1;
+        margin-bottom: 40px;
+    }
+
+    /* Cards */
+    .card {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 20px;
+        padding: 28px;
+        margin-bottom: 25px;
+        backdrop-filter: blur(10px);
+    }
+
+    /* Section headings */
+    .section-title {
+        font-size: 24px;
+        font-weight: 700;
+        color: #f8fafc;
+        margin-bottom: 18px;
+    }
+
+    /* Genre result */
+    .result-card {
+        background: linear-gradient(
+            135deg,
+            rgba(124, 58, 237, 0.25),
+            rgba(37, 99, 235, 0.20)
+        );
+        border: 1px solid rgba(167, 139, 250, 0.5);
+        border-radius: 20px;
+        padding: 30px;
+        text-align: center;
+        margin-top: 25px;
+    }
+
+    .result-label {
+        color: #cbd5e1;
+        font-size: 16px;
+        margin-bottom: 8px;
+    }
+
+    .result-genre {
+        font-size: 42px;
+        font-weight: 800;
+        color: #a78bfa;
+        text-transform: uppercase;
+    }
+
+    /* Info cards */
+    .info-box {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 16px;
+        padding: 20px;
+        text-align: center;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+    }
+
+    .info-number {
+        font-size: 28px;
+        font-weight: 700;
+        color: #60a5fa;
+    }
+
+    .info-text {
+        color: #cbd5e1;
+        font-size: 14px;
+    }
+
+    /* Upload area */
+    [data-testid="stFileUploader"] {
+        background: rgba(255, 255, 255, 0.04);
+        border: 2px dashed rgba(167, 139, 250, 0.5);
+        border-radius: 16px;
+        padding: 20px;
+    }
+
+    /* Button */
+    .stButton > button {
+        width: 100%;
+        border-radius: 12px;
+        border: none;
+        padding: 12px 25px;
+        font-size: 17px;
+        font-weight: 700;
+        color: white;
+        background: linear-gradient(
+            90deg,
+            #7c3aed,
+            #2563eb
+        );
+        transition: 0.3s;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(124, 58, 237, 0.35);
+    }
+
+    /* Audio player */
+    audio {
+        width: 100%;
+        margin-top: 15px;
+    }
+
+    /* Footer */
+    .footer {
+        text-align: center;
+        color: #94a3b8;
+        font-size: 13px;
+        margin-top: 45px;
+        padding-top: 20px;
+        border-top: 1px solid rgba(255,255,255,0.1);
+    }
+
+</style>
+""", unsafe_allow_html=True)
 
 
-# -----------------------------
-# Load Dataset
-# -----------------------------
-@st.cache_data
-def load_data():
-    df = pd.read_csv("spotify-tracks.csv")
+# =========================================================
+# LOAD MODEL
+# =========================================================
 
-    features = [
-        'danceability',
-        'energy',
-        'loudness',
-        'speechiness',
-        'acousticness',
-        'instrumentalness',
-        'liveness',
-        'valence',
-        'tempo',
-        'duration_ms',
-        'popularity',
-        'key',
-        'mode'
-    ]
-
-    target = 'track_genre'
-
-    df = df[features + [target]].dropna()
-
-    df[target] = df[target].replace({
-        'alt-rock': 'rock',
-        'alternative': 'rock',
-        'indie': 'rock',
-        'indie-rock': 'rock'
-    })
-
-    chosen_genres = [
-        'rock',
-        'acoustic',
-        'afrobeat',
-        'ambient',
-        'pop'
-    ]
-
-    df = df[df[target].isin(chosen_genres)]
-
-    return df, features, target
-
-
-# -----------------------------
-# Train Model
-# -----------------------------
 @st.cache_resource
-def train_model():
+def load_model():
 
-    df, features, target = load_data()
+    model = joblib.load("audio_genre_model.pkl")
+    scaler = joblib.load("audio_scaler.pkl")
+    encoder = joblib.load("audio_label_encoder.pkl")
 
-    le = LabelEncoder()
+    return model, scaler, encoder
 
-    y = le.fit_transform(df[target])
-    X = df[features]
 
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+model, scaler, encoder = load_model()
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_scaled,
-        y,
-        test_size=0.2,
-        random_state=42,
-        stratify=y
+
+# =========================================================
+# FEATURE EXTRACTION
+# =========================================================
+
+def extract_features(file_path):
+
+    y, sr = librosa.load(
+        file_path,
+        duration=30
     )
 
-    rf = RandomForestClassifier(
-        n_estimators=400,
-        max_depth=25,
-        min_samples_split=3,
-        class_weight="balanced",
-        random_state=42,
-        n_jobs=-1
+    features = []
+
+    # MFCC - 13
+    mfcc = librosa.feature.mfcc(
+        y=y,
+        sr=sr,
+        n_mfcc=13
     )
 
-    rf.fit(X_train, y_train)
+    features.extend(
+        np.mean(mfcc, axis=1)
+    )
 
-    y_pred = rf.predict(X_test)
+    # Chroma - 12
+    chroma = librosa.feature.chroma_stft(
+        y=y,
+        sr=sr
+    )
 
-    accuracy = accuracy_score(y_test, y_pred)
+    features.extend(
+        np.mean(chroma, axis=1)
+    )
 
-    return rf, scaler, le, accuracy
+    # Spectral Centroid
+    spectral_centroid = librosa.feature.spectral_centroid(
+        y=y,
+        sr=sr
+    )
+
+    features.append(
+        np.mean(spectral_centroid)
+    )
+
+    # Spectral Bandwidth
+    spectral_bandwidth = librosa.feature.spectral_bandwidth(
+        y=y,
+        sr=sr
+    )
+
+    features.append(
+        np.mean(spectral_bandwidth)
+    )
+
+    # Spectral Rolloff
+    spectral_rolloff = librosa.feature.spectral_rolloff(
+        y=y,
+        sr=sr
+    )
+
+    features.append(
+        np.mean(spectral_rolloff)
+    )
+
+    # Zero Crossing Rate
+    zero_crossing_rate = librosa.feature.zero_crossing_rate(y)
+
+    features.append(
+        np.mean(zero_crossing_rate)
+    )
+
+    # RMS Energy
+    rms = librosa.feature.rms(y=y)
+
+    features.append(
+        np.mean(rms)
+    )
+
+    # Tempo
+    tempo, _ = librosa.beat.beat_track(
+        y=y,
+        sr=sr
+    )
+
+    features.append(
+        float(np.asarray(tempo).reshape(-1)[0])
+    )
+
+    return np.array(features)
 
 
-# -----------------------------
-# Load Model
-# -----------------------------
-with st.spinner("Loading dataset and training model..."):
-    df, features, target = load_data()
-    model, scaler, le, accuracy = train_model()
+# =========================================================
+# HEADER
+# =========================================================
+
+st.markdown(
+    '<div class="main-title">Music Genre AI</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="subtitle">'
+    'Upload a music track and let machine learning identify its genre'
+    '</div>',
+    unsafe_allow_html=True
+)
 
 
-# -----------------------------
-# Dataset Information
-# -----------------------------
-st.subheader("Dataset")
+# =========================================================
+# MODEL INFO
+# =========================================================
 
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    st.metric("Total Tracks", len(df))
+    st.markdown("""
+    <div class="info-box">
+        <div class="info-number">31</div>
+        <div class="info-text">Audio Features</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 with col2:
-    st.metric("Genres", len(le.classes_))
+    st.markdown("""
+    <div class="info-box">
+        <div class="info-number">5</div>
+        <div class="info-text">Music Genres</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 with col3:
-    st.metric("Model Accuracy", f"{accuracy:.2%}")
+    st.markdown("""
+    <div class="info-box">
+        <div class="info-number">AI</div>
+        <div class="info-text">Random Forest Model</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
-st.write("Genres:", ", ".join(le.classes_))
+st.write("")
 
 
-# -----------------------------
-# User Input
-# -----------------------------
-st.subheader("Enter Music Features")
+# =========================================================
+# UPLOAD SECTION
+# =========================================================
 
-col1, col2 = st.columns(2)
+st.markdown(
+    '<div class="card">',
+    unsafe_allow_html=True
+)
 
-with col1:
+st.markdown(
+    '<div class="section-title">Upload Your Music</div>',
+    unsafe_allow_html=True
+)
 
-    danceability = st.slider(
-        "Danceability",
-        0.0, 1.0, 0.5
-    )
+uploaded_file = st.file_uploader(
+    "Choose an audio file",
+    type=["wav", "mp3"],
+    help="Upload a WAV or MP3 music file."
+)
 
-    energy = st.slider(
-        "Energy",
-        0.0, 1.0, 0.5
-    )
-
-    loudness = st.number_input(
-        "Loudness (dB)",
-        value=-5.0
-    )
-
-    speechiness = st.slider(
-        "Speechiness",
-        0.0, 1.0, 0.1
-    )
-
-    acousticness = st.slider(
-        "Acousticness",
-        0.0, 1.0, 0.5
-    )
-
-    instrumentalness = st.slider(
-        "Instrumentalness",
-        0.0, 1.0, 0.0
-    )
-
-    liveness = st.slider(
-        "Liveness",
-        0.0, 1.0, 0.2
-    )
-
-with col2:
-
-    valence = st.slider(
-        "Valence",
-        0.0, 1.0, 0.5
-    )
-
-    tempo = st.number_input(
-        "Tempo (BPM)",
-        min_value=0.0,
-        value=120.0
-    )
-
-    duration_ms = st.number_input(
-        "Duration (milliseconds)",
-        min_value=0.0,
-        value=200000.0
-    )
-
-    popularity = st.slider(
-        "Popularity",
-        0, 100, 50
-    )
-
-    key = st.number_input(
-        "Key",
-        min_value=0,
-        max_value=11,
-        value=5
-    )
-
-    mode = st.selectbox(
-        "Mode",
-        [0, 1]
-    )
+st.markdown(
+    '</div>',
+    unsafe_allow_html=True
+)
 
 
-# -----------------------------
-# Prediction
-# -----------------------------
-if st.button("Predict Genre"):
+# =========================================================
+# PREDICTION
+# =========================================================
 
-    input_data = pd.DataFrame([[
-        danceability,
-        energy,
-        loudness,
-        speechiness,
-        acousticness,
-        instrumentalness,
-        liveness,
-        valence,
-        tempo,
-        duration_ms,
-        popularity,
-        key,
-        mode
-    ]], columns=features)
+if uploaded_file is not None:
 
-    input_scaled = scaler.transform(input_data)
+    st.audio(uploaded_file)
 
-    prediction = model.predict(input_scaled)
+    st.write("")
 
-    predicted_genre = le.inverse_transform(prediction)[0]
+    if st.button("Predict Music Genre"):
 
-    st.success(
-        f"Predicted Music Genre: {predicted_genre.upper()}"
-    )
+        temp_path = None
+
+        try:
+
+            file_extension = os.path.splitext(
+                uploaded_file.name
+            )[1]
+
+            with tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=file_extension
+            ) as temp_file:
+
+                temp_file.write(
+                    uploaded_file.getbuffer()
+                )
+
+                temp_path = temp_file.name
+
+            with st.spinner(
+                "Analyzing your music..."
+            ):
+
+                features = extract_features(
+                    temp_path
+                )
+
+                features = features.reshape(
+                    1, -1
+                )
+
+                features_scaled = scaler.transform(
+                    features
+                )
+
+                prediction = model.predict(
+                    features_scaled
+                )
+
+                genre = encoder.inverse_transform(
+                    prediction
+                )[0]
+
+            st.markdown(
+                f"""
+                <div class="result-card">
+                    <div class="result-label">
+                        Predicted Music Genre
+                    </div>
+                    <div class="result-genre">
+                        {genre}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        except Exception as e:
+
+            st.error(
+                f"Unable to process the audio file: {e}"
+            )
+
+        finally:
+
+            if temp_path and os.path.exists(temp_path):
+                os.remove(temp_path)
+
+
+# =========================================================
+# SUPPORTED GENRES
+# =========================================================
+
+st.write("")
+
+st.markdown(
+    '<div class="card">',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="section-title">Supported Genres</div>',
+    unsafe_allow_html=True
+)
+
+st.write(
+    "Blues  •  Classical  •  Country  •  Jazz  •  Rock"
+)
+
+st.markdown(
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# =========================================================
+# FOOTER
+# =========================================================
+
+st.markdown(
+    """
+    <div class="footer">
+        Music Genre Classification • Machine Learning Project
+        <br>
+        Built with Python, Librosa, Scikit-learn and Streamlit
+    </div>
+    """,
+    unsafe_allow_html=True
+)
