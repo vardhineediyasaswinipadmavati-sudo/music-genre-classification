@@ -22,10 +22,12 @@ def extract_features(file_path):
     # MFCC
     mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
     features.extend(np.mean(mfcc, axis=1))
+    features.extend(np.std(mfcc, axis=1))
 
     # Chroma
     chroma = librosa.feature.chroma_stft(y=y, sr=sr)
     features.extend(np.mean(chroma, axis=1))
+    features.extend(np.std(chroma, axis=1))
 
     # Spectral features
     spectral_centroid = librosa.feature.spectral_centroid(y=y, sr=sr)
@@ -33,16 +35,23 @@ def extract_features(file_path):
     spectral_rolloff = librosa.feature.spectral_rolloff(y=y, sr=sr)
 
     features.append(np.mean(spectral_centroid))
+    features.append(np.std(spectral_centroid))
+
     features.append(np.mean(spectral_bandwidth))
+    features.append(np.std(spectral_bandwidth))
+
     features.append(np.mean(spectral_rolloff))
+    features.append(np.std(spectral_rolloff))
 
     # Zero crossing rate
     zcr = librosa.feature.zero_crossing_rate(y)
     features.append(np.mean(zcr))
+    features.append(np.std(zcr))
 
     # RMS energy
     rms = librosa.feature.rms(y=y)
     features.append(np.mean(rms))
+    features.append(np.std(rms))
 
     # Tempo
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
@@ -56,7 +65,12 @@ genres = [
     "blues",
     "classical",
     "country",
+    "disco",
+    "hiphop",
     "jazz",
+    "metal",
+    "pop",
+    "reggae",
     "rock"
 ]
 

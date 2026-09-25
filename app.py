@@ -1,207 +1,147 @@
 import streamlit as st
-import numpy as np
 import librosa
+import numpy as np
 import joblib
-import tempfile
 import os
 
 
-# =========================================================
-# PAGE CONFIGURATION
-# =========================================================
+# ==================================================
+# PAGE SETTINGS
+# ==================================================
 
 st.set_page_config(
     page_title="Music Genre AI",
     page_icon="🎵",
-    layout="wide",
-    initial_sidebar_state="collapsed"
+    layout="wide"
 )
 
 
-# =========================================================
+# ==================================================
 # CUSTOM CSS
-# =========================================================
+# ==================================================
 
 st.markdown("""
 <style>
 
-    /* Main page */
-    .stApp {
-        background: linear-gradient(
-            135deg,
-            #0f172a 0%,
-            #111827 50%,
-            #1e1b4b 100%
-        );
-        color: white;
-    }
+.stApp {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+    color: white;
+}
 
-    /* Remove default top spacing */
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 3rem;
-        max-width: 1100px;
-    }
+h1 {
+    color: white !important;
+}
 
-    /* Main title */
-    .main-title {
-        text-align: center;
-        font-size: 48px;
-        font-weight: 800;
-        margin-bottom: 8px;
-        background: linear-gradient(
-            90deg,
-            #a78bfa,
-            #60a5fa,
-            #22d3ee
-        );
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
+h2, h3 {
+    color: #e2e8f0 !important;
+}
 
-    /* Subtitle */
-    .subtitle {
-        text-align: center;
-        font-size: 18px;
-        color: #cbd5e1;
-        margin-bottom: 40px;
-    }
+p, label {
+    color: #cbd5e1 !important;
+}
 
-    /* Cards */
-    .card {
-        background: rgba(255, 255, 255, 0.06);
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 20px;
-        padding: 28px;
-        margin-bottom: 25px;
-        backdrop-filter: blur(10px);
-    }
 
-    /* Section headings */
-    .section-title {
-        font-size: 24px;
-        font-weight: 700;
-        color: #f8fafc;
-        margin-bottom: 18px;
-    }
+/* Metric cards */
 
-    /* Genre result */
-    .result-card {
-        background: linear-gradient(
-            135deg,
-            rgba(124, 58, 237, 0.25),
-            rgba(37, 99, 235, 0.20)
-        );
-        border: 1px solid rgba(167, 139, 250, 0.5);
-        border-radius: 20px;
-        padding: 30px;
-        text-align: center;
-        margin-top: 25px;
-    }
+div[data-testid="stMetric"] {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 15px;
+    padding: 15px;
+}
 
-    .result-label {
-        color: #cbd5e1;
-        font-size: 16px;
-        margin-bottom: 8px;
-    }
+div[data-testid="stMetricValue"] {
+    color: #a5b4fc;
+}
 
-    .result-genre {
-        font-size: 42px;
-        font-weight: 800;
-        color: #a78bfa;
-        text-transform: uppercase;
-    }
 
-    /* Info cards */
-    .info-box {
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 16px;
-        padding: 20px;
-        text-align: center;
-        border: 1px solid rgba(255, 255, 255, 0.10);
-    }
+/* File uploader */
 
-    .info-number {
-        font-size: 28px;
-        font-weight: 700;
-        color: #60a5fa;
-    }
+div[data-testid="stFileUploader"] {
+    background: rgba(255, 255, 255, 0.06);
+    border: 2px dashed #6366f1;
+    border-radius: 15px;
+    padding: 15px;
+}
 
-    .info-text {
-        color: #cbd5e1;
-        font-size: 14px;
-    }
 
-    /* Upload area */
-    [data-testid="stFileUploader"] {
-        background: rgba(255, 255, 255, 0.04);
-        border: 2px dashed rgba(167, 139, 250, 0.5);
-        border-radius: 16px;
-        padding: 20px;
-    }
+/* Predict button */
 
-    /* Button */
-    .stButton > button {
-        width: 100%;
-        border-radius: 12px;
-        border: none;
-        padding: 12px 25px;
-        font-size: 17px;
-        font-weight: 700;
-        color: white;
-        background: linear-gradient(
-            90deg,
-            #7c3aed,
-            #2563eb
-        );
-        transition: 0.3s;
-    }
+.stButton > button {
+    width: 100%;
+    border-radius: 10px;
+    border: none;
+    padding: 12px;
+    font-weight: 600;
+    background: #6366f1;
+    color: white;
+}
 
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(124, 58, 237, 0.35);
-    }
+.stButton > button:hover {
+    background: #818cf8;
+    color: white;
+}
 
-    /* Audio player */
-    audio {
-        width: 100%;
-        margin-top: 15px;
-    }
 
-    /* Footer */
-    .footer {
-        text-align: center;
-        color: #94a3b8;
-        font-size: 13px;
-        margin-top: 45px;
-        padding-top: 20px;
-        border-top: 1px solid rgba(255,255,255,0.1);
-    }
+/* Prediction result */
+
+.result-box {
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(129, 140, 248, 0.5);
+    border-radius: 15px;
+    padding: 25px;
+    text-align: center;
+}
+
+.result-box h1 {
+    color: #a5b4fc !important;
+    font-size: 42px;
+    margin: 10px 0;
+}
+
+.result-box h3 {
+    color: #e2e8f0 !important;
+}
+
+.result-box p {
+    color: #94a3b8 !important;
+}
+
+
+/* How it works */
+
+.info-box {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 15px;
+    padding: 20px;
+    min-height: 150px;
+}
+
+.info-box h3 {
+    color: #a5b4fc !important;
+}
+
+.info-box p {
+    color: #cbd5e1 !important;
+}
 
 </style>
 """, unsafe_allow_html=True)
 
 
-# =========================================================
-# LOAD MODEL
-# =========================================================
+# ==================================================
+# LOAD TRAINED MODEL
+# ==================================================
 
-@st.cache_resource
-def load_model():
-
-    model = joblib.load("audio_genre_model.pkl")
-    scaler = joblib.load("audio_scaler.pkl")
-    encoder = joblib.load("audio_label_encoder.pkl")
-
-    return model, scaler, encoder
+model = joblib.load("audio_genre_model.pkl")
+scaler = joblib.load("audio_scaler.pkl")
+label_encoder = joblib.load("audio_label_encoder.pkl")
 
 
-model, scaler, encoder = load_model()
-
-
-# =========================================================
+# ==================================================
 # FEATURE EXTRACTION
-# =========================================================
+# ==================================================
 
 def extract_features(file_path):
 
@@ -212,7 +152,7 @@ def extract_features(file_path):
 
     features = []
 
-    # MFCC - 13
+    # MFCC - 26 features
     mfcc = librosa.feature.mfcc(
         y=y,
         sr=sr,
@@ -223,7 +163,11 @@ def extract_features(file_path):
         np.mean(mfcc, axis=1)
     )
 
-    # Chroma - 12
+    features.extend(
+        np.std(mfcc, axis=1)
+    )
+
+    # Chroma - 24 features
     chroma = librosa.feature.chroma_stft(
         y=y,
         sr=sr
@@ -233,258 +177,321 @@ def extract_features(file_path):
         np.mean(chroma, axis=1)
     )
 
-    # Spectral Centroid
-    spectral_centroid = librosa.feature.spectral_centroid(
+    features.extend(
+        np.std(chroma, axis=1)
+    )
+
+    # Spectral features
+    centroid = librosa.feature.spectral_centroid(
+        y=y,
+        sr=sr
+    )
+
+    bandwidth = librosa.feature.spectral_bandwidth(
+        y=y,
+        sr=sr
+    )
+
+    rolloff = librosa.feature.spectral_rolloff(
         y=y,
         sr=sr
     )
 
     features.append(
-        np.mean(spectral_centroid)
-    )
-
-    # Spectral Bandwidth
-    spectral_bandwidth = librosa.feature.spectral_bandwidth(
-        y=y,
-        sr=sr
+        np.mean(centroid)
     )
 
     features.append(
-        np.mean(spectral_bandwidth)
-    )
-
-    # Spectral Rolloff
-    spectral_rolloff = librosa.feature.spectral_rolloff(
-        y=y,
-        sr=sr
+        np.std(centroid)
     )
 
     features.append(
-        np.mean(spectral_rolloff)
+        np.mean(bandwidth)
+    )
+
+    features.append(
+        np.std(bandwidth)
+    )
+
+    features.append(
+        np.mean(rolloff)
+    )
+
+    features.append(
+        np.std(rolloff)
     )
 
     # Zero Crossing Rate
-    zero_crossing_rate = librosa.feature.zero_crossing_rate(y)
+    zcr = librosa.feature.zero_crossing_rate(y)
 
     features.append(
-        np.mean(zero_crossing_rate)
+        np.mean(zcr)
+    )
+
+    features.append(
+        np.std(zcr)
     )
 
     # RMS Energy
-    rms = librosa.feature.rms(y=y)
+    rms = librosa.feature.rms(
+        y=y
+    )
 
     features.append(
         np.mean(rms)
     )
 
+    features.append(
+        np.std(rms)
+    )
+
     # Tempo
-    tempo, _ = librosa.beat.beat_track(
+    tempo = librosa.beat.beat_track(
         y=y,
         sr=sr
-    )
+    )[0]
+
+    tempo = np.asarray(
+        tempo
+    ).flatten()[0]
 
     features.append(
-        float(np.asarray(tempo).reshape(-1)[0])
+        float(tempo)
     )
 
-    return np.array(features)
+    return features
 
 
-# =========================================================
-# HEADER
-# =========================================================
+# ==================================================
+# MAIN TITLE
+# ==================================================
 
-st.markdown(
-    '<div class="main-title">Music Genre AI</div>',
-    unsafe_allow_html=True
-)
+st.title("🎵 Music Genre AI")
 
-st.markdown(
-    '<div class="subtitle">'
-    'Upload a music track and let machine learning identify its genre'
-    '</div>',
-    unsafe_allow_html=True
+st.write(
+    "Upload a song and let Machine Learning predict its genre."
 )
 
 
-# =========================================================
-# MODEL INFO
-# =========================================================
+# ==================================================
+# PROJECT INFORMATION
+# ==================================================
 
-col1, col2, col3 = st.columns(3)
+col1, col2 = st.columns(2)
 
 with col1:
-    st.markdown("""
-    <div class="info-box">
-        <div class="info-number">31</div>
-        <div class="info-text">Audio Features</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.metric(
+        "Audio Features",
+        "61"
+    )
 
 with col2:
-    st.markdown("""
-    <div class="info-box">
-        <div class="info-number">5</div>
-        <div class="info-text">Music Genres</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with col3:
-    st.markdown("""
-    <div class="info-box">
-        <div class="info-number">AI</div>
-        <div class="info-text">Random Forest Model</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.metric(
+        "Music Genres",
+        "10"
+    )
 
 
-st.write("")
-
-
-# =========================================================
+# ==================================================
 # UPLOAD SECTION
-# =========================================================
+# ==================================================
 
-st.markdown(
-    '<div class="card">',
-    unsafe_allow_html=True
-)
+st.divider()
 
-st.markdown(
-    '<div class="section-title">Upload Your Music</div>',
-    unsafe_allow_html=True
-)
+st.subheader("Upload Your Audio")
 
 uploaded_file = st.file_uploader(
     "Choose an audio file",
-    type=["wav", "mp3"],
-    help="Upload a WAV or MP3 music file."
-)
-
-st.markdown(
-    '</div>',
-    unsafe_allow_html=True
+    type=["wav", "mp3"]
 )
 
 
-# =========================================================
+# ==================================================
 # PREDICTION
-# =========================================================
+# ==================================================
 
 if uploaded_file is not None:
 
     st.audio(uploaded_file)
 
-    st.write("")
-
-    if st.button("Predict Music Genre"):
-
-        temp_path = None
+    if st.button(
+        "Predict Music Genre",
+        use_container_width=True
+    ):
 
         try:
 
-            file_extension = os.path.splitext(
+            # Keep original extension
+            extension = os.path.splitext(
                 uploaded_file.name
-            )[1]
+            )[1].lower()
 
-            with tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=file_extension
-            ) as temp_file:
+            temp_file = (
+                "temp_audio" + extension
+            )
 
-                temp_file.write(
+            with open(
+                temp_file,
+                "wb"
+            ) as f:
+
+                f.write(
                     uploaded_file.getbuffer()
                 )
 
-                temp_path = temp_file.name
+            # Extract features
+            features = extract_features(
+                temp_file
+            )
 
-            with st.spinner(
-                "Analyzing your music..."
-            ):
+            features = np.array(
+                features
+            )
 
-                features = extract_features(
-                    temp_path
+            # Check feature count
+            if len(features) != 61:
+
+                st.error(
+                    f"Feature extraction error. "
+                    f"Expected 61 features but got "
+                    f"{len(features)}."
                 )
 
+            else:
+
+                # Reshape
                 features = features.reshape(
-                    1, -1
+                    1,
+                    -1
                 )
 
+                # Scale
                 features_scaled = scaler.transform(
                     features
                 )
 
+                # Predict
                 prediction = model.predict(
                     features_scaled
                 )
 
-                genre = encoder.inverse_transform(
+                genre = label_encoder.inverse_transform(
                     prediction
                 )[0]
 
-            st.markdown(
-                f"""
-                <div class="result-card">
-                    <div class="result-label">
-                        Predicted Music Genre
+                # Format genre name
+                if genre == "hiphop":
+                    display_genre = "HIP-HOP"
+                else:
+                    display_genre = genre.upper()
+
+                # Result
+                st.divider()
+
+                st.markdown(
+                    f"""
+                    <div class="result-box">
+                        <h3>Predicted Music Genre</h3>
+                        <h1>{display_genre}</h1>
+                        <p>
+                            Prediction generated using
+                            Random Forest Machine Learning.
+                        </p>
                     </div>
-                    <div class="result-genre">
-                        {genre}
-                    </div>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+                    """,
+                    unsafe_allow_html=True
+                )
 
         except Exception as e:
 
             st.error(
-                f"Unable to process the audio file: {e}"
+                "Unable to process the audio file."
             )
 
-        finally:
+            st.write(
+                str(e)
+            )
 
-            if temp_path and os.path.exists(temp_path):
-                os.remove(temp_path)
+
+# ==================================================
+# HOW IT WORKS
+# ==================================================
+
+st.divider()
+
+st.subheader("How It Works")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+
+    st.markdown(
+        """
+        <div class="info-box">
+            <h3>1. Upload</h3>
+            <p>
+                Upload a WAV or MP3 audio file
+                to the application.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
-# =========================================================
+with col2:
+
+    st.markdown(
+        """
+        <div class="info-box">
+            <h3>2. Extract Features</h3>
+            <p>
+                Librosa extracts 61 audio features
+                from the uploaded song.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+with col3:
+
+    st.markdown(
+        """
+        <div class="info-box">
+            <h3>3. Predict</h3>
+            <p>
+                A Random Forest model analyzes
+                the features and predicts the genre.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+
+# ==================================================
 # SUPPORTED GENRES
-# =========================================================
+# ==================================================
 
-st.write("")
+st.divider()
 
-st.markdown(
-    '<div class="card">',
-    unsafe_allow_html=True
-)
-
-st.markdown(
-    '<div class="section-title">Supported Genres</div>',
-    unsafe_allow_html=True
-)
+st.subheader("Supported Genres")
 
 st.write(
-    "Blues  •  Classical  •  Country  •  Jazz  •  Rock"
-)
-
-st.markdown(
-    '</div>',
-    unsafe_allow_html=True
+    "Blues • Classical • Country • Disco • "
+    "Hip-Hop • Jazz • Metal • Pop • Reggae • Rock"
 )
 
 
-# =========================================================
+# ==================================================
 # FOOTER
-# =========================================================
+# ==================================================
 
-st.markdown(
-    """
-    <div class="footer">
-        Music Genre Classification • Machine Learning Project
-        <br>
-        Built with Python, Librosa, Scikit-learn and Streamlit
-    </div>
-    """,
-    unsafe_allow_html=True
+st.divider()
+
+st.caption(
+    "Music Genre Classification using Machine Learning | "
+    "Random Forest • Librosa • Streamlit"
 )
